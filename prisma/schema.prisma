@@ -1,0 +1,33 @@
+// Prisma schema for EquipX (Locked OpenAPI F4 Contract)
+// Database: Neon PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Equipment {
+  id       String    @id
+  name     String
+  quantity Int
+  bookings Booking[]
+
+  @@map("equipment")
+}
+
+model Booking {
+  id          String    @id
+  equipmentId String    @map("equipment_id")
+  user        String
+  from        DateTime  @map("from")
+  to          DateTime  @map("to")
+  status      String    @default("pending") // enum: pending, approved, rejected, returned
+  createdAt   DateTime  @default(now()) @map("created_at")
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@map("bookings")
+}

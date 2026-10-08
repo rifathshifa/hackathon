@@ -1,0 +1,748 @@
+# ===========================================================================
+# openapi.yaml  —  LOCKED API CONTRACT
+# ELEVIX - 1.0  ·  Fullstack PS F1, F3, F4, F5, F7, F8
+#
+# This is the contract your app MUST implement.  It is locked: do not change
+# it, do not rename paths, do not drop fields.  The jury runs the contract
+# tests against your running server, and a route that does not match this
+# file fails that PS.
+#
+# How to use it
+#   1. Read the paths below and implement every one of them.
+#   2. Every response is JSON.  Every error carries {"error": "<CODE>"}.
+#   3. IDs are strings.  Dates are YYYY-MM-DD.  Timestamps are ISO-8601.
+#   4. Your server must start on the port the jury gives you and answer
+#      GET /health with {"status":"ok"} within 5 seconds.
+# ===========================================================================
+openapi: 3.0.3
+info:
+  title: ELEVIX - 1.0 Fullstack App Contract
+  version: 1.0.0
+  description: >
+    Locked API contract for PS F1, F3, F4, F5, F7 and F8. Implement every
+    path. The core logic must be handwritten - no auto-CRUD framework may
+    generate these routes for you.
+
+servers:
+  - url: http://localhost:{port}
+    variables:
+      port:
+        default: "8080"
+
+# ---------------------------------------------------------------------------
+# Every app must answer this, whatever the PS.
+# ---------------------------------------------------------------------------
+paths:
+
+  /health:
+    get:
+      summary: Liveness probe used by the jury before scoring.
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  version:
+                    type: string
+              example:
+                status: ok
+                version: 1.0.0
+
+# ---------------------------------------------------------------------------
+# F1  College Lost & Found Portal
+# ---------------------------------------------------------------------------
+  /items:
+    get:
+      summary: F1 - search found items.
+      operationId: f1_search_items
+      security: []
+      parameters:
+        - {name: q,      in: query, required: false, schema: {type: string}}
+        - {name: status, in: query, required: false,
+           schema: {type: string, enum: [open, claimed, closed]}}
+        - {name: page,   in: query, required: false, schema: {type: integer, default: 1}}
+        - {name: limit,  in: query, required: false, schema: {type: integer, default: 20}}
+      responses:
+        "200":
+          description: Matching items.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/F1Item"}
+                  total: {type: integer}
+    post:
+      summary: F1 - report a found item.
+      operationId: f1_create_item
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/F1Item"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+  /items/{id}/claim:
+    post:
+      summary: F1 - claim an item; the handwritten matching logic runs here.
+      operationId: f1_claim_item
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [claimant, proof]
+              properties:
+                claimant: {type: string}
+                proof:    {type: string, description: Answer to the security question.}
+      responses:
+        "200":
+          description: Claim accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: {type: string}
+                  status: {type: string, enum: [claimed]}
+        "403":
+          description: Proof did not match.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+# ---------------------------------------------------------------------------
+# F3  Event Registration + E-Certificate Portal
+# ---------------------------------------------------------------------------
+  /events:
+    get:
+      summary: F3 - list events.
+      operationId: f3_list_events
+      security: []
+      responses:
+        "200":
+          description: Events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/F3Event"}
+    post:
+      summary: F3 - create an event.
+      operationId: f3_create_event
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/F3Event"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+  /events/{id}/register:
+    post:
+      summary: F3 - register a participant.
+      operationId: f3_register
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name:  {type: string}
+                email: {type: string, format: email}
+                dept:  {type: string}
+      responses:
+        "201":
+          description: Registered.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reg_id, certificate_id]
+                properties:
+                  reg_id:        {type: string}
+                  certificate_id: {type: string, description: The handwritten certificate ID.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "409":
+          description: Already registered.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /certificates/{certificate_id}:
+    get:
+      summary: F3 - verify a certificate by its ID.
+      operationId: f3_verify_certificate
+      security: []
+      parameters:
+        - {name: certificate_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Certificate is genuine.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [certificate_id, valid, name, event]
+                properties:
+                  certificate_id: {type: string}
+                  valid:          {type: boolean}
+                  name:           {type: string}
+                  event:          {type: string}
+                  issued_on:      {type: string, format: date}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+# ---------------------------------------------------------------------------
+# F4  Lab Equipment Booking System
+# ---------------------------------------------------------------------------
+  /equipment:
+    get:
+      summary: F4 - list bookable equipment.
+      operationId: f4_list_equipment
+      security: []
+      responses:
+        "200":
+          description: Equipment list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/F4Equipment"}
+    post:
+      summary: F4 - add equipment.
+      operationId: f4_create_equipment
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/F4Equipment"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+  /bookings:
+    post:
+      summary: F4 - request a booking; slot-conflict detection runs here.
+      operationId: f4_create_booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [equipment_id, user, from, to]
+              properties:
+                equipment_id: {type: string}
+                user:         {type: string}
+                from:         {type: string, format: date-time}
+                to:           {type: string, format: date-time}
+      responses:
+        "201":
+          description: Booking accepted.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/F4Booking"}
+        "409":
+          description: Slot clash - must be rejected, never silently overwritten.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+  /bookings/{id}/approve:
+    post:
+      summary: F4 - move a booking through the approval state machine.
+      operationId: f4_approve_booking
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: New state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id:     {type: string}
+                  status: {type: string, enum: [pending, approved, rejected, issued, returned]}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+# ---------------------------------------------------------------------------
+# F5  Hostel Complaint Tracker
+# ---------------------------------------------------------------------------
+  /complaints:
+    get:
+      summary: F5 - list complaints.
+      operationId: f5_list_complaints
+      security: []
+      parameters:
+        - {name: status, in: query, required: false,
+           schema: {type: string, enum: [open, in_progress, escalated, closed]}}
+        - {name: hostel, in: query, required: false, schema: {type: string}}
+      responses:
+        "200":
+          description: Complaints.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/F5Complaint"}
+    post:
+      summary: F5 - file a complaint.
+      operationId: f5_create_complaint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student, hostel, room, category, text]
+              properties:
+                student:  {type: string}
+                hostel:   {type: string}
+                room:     {type: string}
+                category: {type: string, enum: [electrical, plumbing, cleaning, other]}
+                text:     {type: string}
+                priority: {type: string, enum: [low, normal, high], default: normal}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/F5Complaint"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+  /complaints/{id}/status:
+    patch:
+      summary: F5 - change status; the SLA timer and escalation rules run here.
+      operationId: f5_update_status
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {type: string, enum: [open, in_progress, escalated, closed]}
+                note:   {type: string}
+      responses:
+        "200":
+          description: Updated, with the SLA fields recalculated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/F5Complaint"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+# ---------------------------------------------------------------------------
+# F7  Exam Hall Allocation Tool
+# ---------------------------------------------------------------------------
+  /halls:
+    get:
+      summary: F7 - list halls and their capacity.
+      operationId: f7_list_halls
+      security: []
+      responses:
+        "200":
+          description: Halls.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/F7Hall"}
+
+  /students:
+    get:
+      summary: F7 - list students to be seated.
+      operationId: f7_list_students
+      security: []
+      parameters:
+        - {name: dept, in: query, required: false, schema: {type: string}}
+        - {name: year, in: query, required: false, schema: {type: integer}}
+      responses:
+        "200":
+          description: Students.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/F7Student"}
+
+  /allocate:
+    post:
+      summary: F7 - run the constraint-satisfaction allocator. No OR-tools allowed.
+      operationId: f7_allocate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exam_id]
+              properties:
+                exam_id: {type: string}
+                rules:
+                  type: object
+                  properties:
+                    same_dept_adjacent: {type: boolean, default: false}
+                    max_per_row:        {type: integer, default: 2}
+      responses:
+        "200":
+          description: Allocation result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exam_id, allocations, unseated]
+                properties:
+                  exam_id:     {type: string}
+                  allocations:
+                    type: array
+                    items:
+                      type: object
+                      required: [hall, seat, student]
+                      properties:
+                        hall:    {type: string}
+                        seat:    {type: string}
+                        student: {type: string}
+                  unseated:
+                    type: array
+                    items: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+# ---------------------------------------------------------------------------
+# F8  Library Book Exchange Platform
+# ---------------------------------------------------------------------------
+  /books:
+    get:
+      summary: F8 - list books offered for exchange.
+      operationId: f8_list_books
+      security: []
+      parameters:
+        - {name: q,       in: query, required: false, schema: {type: string}}
+        - {name: owner,   in: query, required: false, schema: {type: string}}
+        - {name: status,  in: query, required: false,
+           schema: {type: string, enum: [available, matched, exchanged]}}
+      responses:
+        "200":
+          description: Books.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/F8Book"}
+    post:
+      summary: F8 - offer a book.
+      operationId: f8_create_book
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner, title, author]
+              properties:
+                owner:   {type: string}
+                title:   {type: string}
+                author:  {type: string}
+                isbn:    {type: string}
+                condition: {type: string, enum: [new, good, worn]}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/F8Book"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+  /books/{id}/match:
+    post:
+      summary: F8 - request a match; the handwritten match-scoring runs here.
+      operationId: f8_match_book
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requester, offered_book_id]
+              properties:
+                requester:        {type: string}
+                offered_book_id:  {type: string}
+      responses:
+        "200":
+          description: Match proposed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [match_id, score, state]
+                properties:
+                  match_id: {type: string}
+                  score:    {type: number, description: Your handwritten match score.}
+                  state:    {type: string, enum: [proposed, accepted, declined, done]}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /matches/{id}/state:
+    post:
+      summary: F8 - move a match through the exchange state machine.
+      operationId: f8_match_state
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: {type: string, enum: [proposed, accepted, declined, done]}
+      responses:
+        "200":
+          description: New state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [match_id, state]
+                properties:
+                  match_id: {type: string}
+                  state:    {type: string}
+        "409":
+          description: Illegal transition - the state machine must reject it.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+# ---------------------------------------------------------------------------
+# Calendar Management
+# ---------------------------------------------------------------------------
+  /calendar/events:
+    get:
+      summary: List calendar events
+      operationId: list_calendar_events
+      security: []
+      responses:
+        "200":
+          description: List of calendar events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/CalendarEvent"}
+    post:
+      summary: Create a calendar event
+      operationId: create_calendar_event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CalendarEventInput"}
+      responses:
+        "201":
+          description: Event created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CalendarEvent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+  /calendar/events/{eventId}:
+    put:
+      summary: Update a calendar event
+      operationId: update_calendar_event
+      parameters:
+        - {name: eventId, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CalendarEventInput"}
+      responses:
+        "200":
+          description: Event updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CalendarEvent"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      summary: Delete a calendar event
+      operationId: delete_calendar_event
+      parameters:
+        - {name: eventId, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Event deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, eventId]
+                properties:
+                  success: {type: boolean}
+                  eventId: {type: string}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+# ---------------------------------------------------------------------------
+components:
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example: {error: BAD_REQUEST}
+    NotFound:
+      description: No such resource.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example: {error: NOT_FOUND}
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:   {type: string, description: A short machine-readable code.}
+        message: {type: string, description: A human-readable explanation.}
+
+    F1Item:
+      type: object
+      required: [id, title, status]
+      properties:
+        id:         {type: string}
+        title:      {type: string}
+        found_at:   {type: string}
+        found_on:   {type: string, format: date}
+        status:     {type: string, enum: [open, claimed, closed]}
+        question:   {type: string, description: Security question for the claimant.}
+
+    F3Event:
+      type: object
+      required: [id, title, date]
+      properties:
+        id:    {type: string}
+        title: {type: string}
+        date:  {type: string, format: date}
+        venue: {type: string}
+
+    F4Equipment:
+      type: object
+      required: [id, name, quantity]
+      properties:
+        id:       {type: string}
+        name:     {type: string}
+        quantity: {type: integer}
+
+    F4Booking:
+      type: object
+      required: [id, equipment_id, user, from, to, status]
+      properties:
+        id:           {type: string}
+        equipment_id: {type: string}
+        user:         {type: string}
+        from:         {type: string, format: date-time}
+        to:           {type: string, format: date-time}
+        status:       {type: string, enum: [pending, approved, rejected, issued, returned]}
+
+    F5Complaint:
+      type: object
+      required: [id, student, hostel, category, text, status, raised_on]
+      properties:
+        id:         {type: string}
+        student:    {type: string}
+        hostel:     {type: string}
+        room:       {type: string}
+        category:   {type: string}
+        text:       {type: string}
+        priority:   {type: string, enum: [low, normal, high]}
+        status:     {type: string, enum: [open, in_progress, escalated, closed]}
+        raised_on:  {type: string, format: date-time}
+        sla_due_at: {type: string, format: date-time}
+        breached:   {type: boolean}
+
+    F7Hall:
+      type: object
+      required: [id, name, rows, cols]
+      properties:
+        id:   {type: string}
+        name: {type: string}
+        rows: {type: integer}
+        cols: {type: integer}
+
+    F7Student:
+      type: object
+      required: [id, name, dept, year]
+      properties:
+        id:   {type: string}
+        name: {type: string}
+        dept: {type: string}
+        year: {type: integer}
+
+    F8Book:
+      type: object
+      required: [id, owner, title, status]
+      properties:
+        id:        {type: string}
+        owner:     {type: string}
+        title:     {type: string}
+        author:    {type: string}
+        isbn:      {type: string}
+        condition: {type: string, enum: [new, good, worn]}
+        status:    {type: string, enum: [available, matched, exchanged]}
+
+    CalendarEventInput:
+      type: object
+      required: [title, start, end]
+      properties:
+        title:       {type: string}
+        description: {type: string}
+        start:       {type: string, format: date-time}
+        end:         {type: string, format: date-time}
+        venue:       {type: string}
+        category:    {type: string}
+        all_day:     {type: boolean, default: false}
+
+    CalendarEvent:
+      type: object
+      required: [id, title, start, end]
+      properties:
+        id:          {type: string}
+        title:       {type: string}
+        description: {type: string}
+        start:       {type: string, format: date-time}
+        end:         {type: string, format: date-time}
+        venue:       {type: string}
+        category:    {type: string}
+        all_day:     {type: boolean, default: false}
+        created_at:  {type: string, format: date-time}
+
+security: []
